@@ -1,0 +1,119 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>SentinelIQ · Severity-Aware Anomaly Detector</title>
+<style>
+:root{--bg:#f4f6f9;--c:#fff;--t:#161b22;--m:#667085;--b:#e1e5eb;--g:#17915a;--a:#c98200;--r:#d3352e;--p:#2f6fed;--band:#e8effd;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1217;--c:#161c24;--t:#e8ecf2;--m:#8b95a5;--b:#28303b;--band:#1b2842}}
+:root[data-theme="dark"]{--bg:#0e1217;--c:#161c24;--t:#e8ecf2;--m:#8b95a5;--b:#28303b;--band:#1b2842}
+*{box-sizing:border-box}html,body{margin:0}body{background:var(--bg);color:var(--t);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;padding:12px}
+h1{font-size:18px;margin:0}h2{font-size:13px;margin:0 0 8px;color:var(--m);text-transform:uppercase;letter-spacing:.05em}
+.top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.pipe{display:flex;flex-wrap:wrap;gap:4px;font-size:11px;color:var(--m);margin-bottom:10px}.pipe span{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:2px 8px}
+button,select{font:inherit;border:1px solid var(--b);background:var(--c);color:var(--t);border-radius:8px;padding:6px 10px;cursor:pointer}
+button.p{background:var(--p);color:#fff;border-color:var(--p)}button:hover{filter:brightness(.96)}
+.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:12px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px}
+.k b{display:block;font-size:22px}.k small{color:var(--m)}
+.main{display:grid;grid-template-columns:1.2fr 1fr;gap:10px}@media(max-width:820px){.main{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.s{padding:8px}.s .h{display:flex;justify-content:space-between;font-size:12px}.s canvas{width:100%;height:52px;display:block}
+.chip{font-size:11px;border-radius:10px;padding:1px 7px;color:#fff;background:var(--g)}
+.feed{max-height:520px;overflow:auto}.row{border:1px solid var(--b);border-left:4px solid var(--a);border-radius:8px;padding:7px 9px;margin-bottom:6px;font-size:13px}
+.row.u{border-left-color:var(--r)}.row.m{border-left-color:var(--a)}
+.bar{height:6px;background:var(--b);border-radius:3px;margin:4px 0;overflow:hidden}.bar i{display:block;height:100%}
+.tag{font-size:11px;padding:0 6px;border-radius:6px;background:var(--band);margin-right:4px}.sm{color:var(--m);font-size:12px}
+.ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#rep{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;padding:14px;overflow:auto;z-index:9}#rep>div{max-width:900px;margin:auto}
+table{border-collapse:collapse;width:100%;font-size:12px}th,td{border-bottom:1px solid var(--b);padding:4px 6px;text-align:left}.ov{overflow-x:auto}
+</style></head><body>
+<div class="top"><div><h1>🛡 SentinelIQ — Severity-Aware Anomaly Detector</h1><span class="sm">Per-sensor digital twin · 4 anomaly types · Isolation Forest · tiered routing</span></div>
+<div class="ctl"><button class="p" onclick="demo()">▶ Review demo</button><button onclick="pp()" id="pb">⏸ Pause</button><select id="sp"><option>1</option><option selected>2</option><option>4</option></select>×<button onclick="rep()">📄 Report</button></div></div>
+<div class="pipe"><span>Generator</span>→<span>Digital twin (residual)</span>→<span>Spike · Drift · Dropout · Stuck · IsoForest</span>→<span>Type + confidence</span>→<span>Severity 0-100</span>→<span>Incident grouping + root cause</span>→<span>Router: Ignore / Monitor / Urgent</span></div>
+<div class="kpis" id="kp"></div>
+<div class="main"><div><div class="card" style="margin-bottom:10px"><h2>Chaos panel — inject live</h2><div class="ctl"><select id="cs"></select>
+<button onclick="ij('spike')">Spike</button><button onclick="ij('drift')">Drift</button><button onclick="ij('dropout')">Dropout</button><button onclick="ij('stuck')">Stuck</button><span class="sm" id="tk"></span></div></div>
+<div class="grid" id="gr"></div></div>
+<div class="card"><h2>Live alert feed (operator view)</h2><div class="feed" id="fd"><div class="sm">Calibrating digital twins… then click “Review demo” or use the chaos panel.</div></div></div></div>
+<div id="rep" onclick="if(event.target==this)this.style.display='none'"><div class="card" id="rb"></div></div>
+<script>
+let rs=42;Math.random=()=>{rs|=0;rs=rs+0x6D2B79F5|0;let q=Math.imul(rs^rs>>>15,1|rs);q=q+Math.imul(q^q>>>7,61|q)^q;return((q^q>>>14)>>>0)/4294967296};
+const $=i=>document.getElementById(i),avg=a=>a.reduce((x,y)=>x+y,0)/(a.length||1),rn=()=>{let u=0,v=0;while(!u)u=Math.random();v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(6.283*v)};
+const D=[['Pump3 Vibration','mm/s',4,1.2,.15,1,9],['Motor Temp','°C',60,8,.6,.8,95],['Bearing Temp','°C',55,6,.5,.9,85],['Outlet Pressure','bar',6,1.5,.08,.7,9],['Flow Rate','m³/h',120,20,1.5,.6,200],['Motor Current','A',30,10,.5,.7,55]];
+const WU=120,W=110,TN=['Ignore','Monitor','Urgent'],DEF={spike:[9,2],drift:[.15,80],dropout:[0,15],stuck:[0,45],blip:[5,1]};
+let S,t,LH,alerts,injs,raw,naive,pings,grouped,ign,fpA,lastInc,inc,run=true,auto=false,K;
+const cf=n=>n<=1?0:2*(Math.log(n-1)+.5772)-2*(n-1)/n;
+function itree(X,d,md){if(d>=md||X.length<=1)return{s:X.length};const q=Math.floor(Math.random()*3);let lo=1e9,hi=-1e9;X.forEach(x=>{lo=Math.min(lo,x[q]);hi=Math.max(hi,x[q])});if(lo==hi)return{s:X.length};const p=lo+Math.random()*(hi-lo);return{q,p,l:itree(X.filter(x=>x[q]<p),d+1,md),r:itree(X.filter(x=>x[q]>=p),d+1,md)}}
+const pl=(n,x,d=0)=>n.q===undefined?d+cf(n.s):pl(x[n.q]<n.p?n.l:n.r,x,d+1);
+const iso=(s,x)=>Math.pow(2,-avg(s.f.map(tr=>pl(tr,x)))/cf(64));
+function init(){rs=42;t=0;LH=[];alerts=[];injs=[];raw=naive=pings=grouped=ign=fpA=0;lastInc=-99;inc=0;
+S=D.map((d,i)=>({i,n:d[0],u:d[1],b:d[2],k:d[3],nz:d[4],cr:d[5],lim:d[6],v:[],e:[],wl:[],wv:[],a:0,c:0,sig:1,m:1,cp:0,cn:0,hi:0,nr:0,act:null,inj:null,zl:0,z5:[],f:null,nm:0,ns:1}));
+$('cs').innerHTML=S.map(s=>`<option value=${s.i}>${s.n}</option>`).join('');$('fd').innerHTML='<div class="sm">Calibrating digital twins…</div>';
+$('gr').innerHTML=S.map(s=>`<div class="card s"><div class="h"><b>${s.n}</b><span class="chip" id="ch${s.i}">CAL</span></div><div class="sm" id="vl${s.i}">—</div><canvas id="cv${s.i}" width="300" height="52"></canvas></div>`).join('')}
+function fit(s){const ml=avg(s.wl),mv=avg(s.wv);let a=0,b=0;s.wl.forEach((l,i)=>{a+=(l-ml)*(s.wv[i]-mv);b+=(l-ml)**2});s.c=a/b;s.a=mv-s.c*ml;
+const rs=s.wv.map((v,i)=>v-s.a-s.c*s.wl[i]);s.sig=Math.sqrt(avg(rs.map(x=>x*x)));const z=rs.map(x=>x/s.sig),X=[];for(let i=5;i<z.length;i++)X.push([z[i],z[i]-z[i-1],avg(z.slice(i-4,i+1))]);
+s.f=Array.from({length:30},()=>itree(X.slice().sort(()=>Math.random()-.5).slice(0,64),0,6));s.n=s.wl.length;s.Sl=s.wl.reduce((x,y)=>x+y,0);s.Sv=s.wv.reduce((x,y)=>x+y,0);s.Sll=s.wl.reduce((x,y)=>x+y*y,0);s.Slv=s.wl.reduce((x,y,i)=>x+y*s.wv[i],0);s.nm=mv;s.ns=Math.sqrt(avg(s.wv.map(x=>(x-mv)**2)))}
+function inject(i,type,mag,dur){if(t<=WU)return;const d=DEF[type];mag=mag??d[0];dur=dur??d[1];const r={id:injs.length+1,i,type,mag,dur,start:t,det:null,lat:null,peak:0,tier:0};injs.push(r);S[i].inj={type,start:t,end:t+dur,mag,fz:null,r}}
+function gen(s,load){let v=s.b+s.k*load+rn()*s.nz;const j=s.inj;if(j){if(t>=j.end)s.inj=null;else{const d=t-j.start;if(j.type=='spike'||j.type=='blip')v+=j.mag*s.nz;else if(j.type=='drift')v+=d*s.nz*j.mag;else if(j.type=='dropout')v=null;else if(j.type=='stuck'){if(j.fz==null)j.fz=v;v=j.fz}}}return v}
+const isF=a=>a.type=='dropout'||a.type=='stuck';
+function sevOf(s,a,z){const d=t-a.start+1,f=isF(a),mag=f?.5:Math.min(1,a.zm/14),pers=Math.min(1,d/(f?60:40)),sp=Math.min(1,S.filter(x=>x!=s&&x.act).length/3),tr=f?.5:(Math.abs(z)>=a.zp?1:.3);a.zp=Math.abs(z);
+let x=100*(.3*mag+.25*pers+.15*sp+.2*s.cr+.1*tr);if(a.type=='spike')x*=.6;return Math.min(100,x)}
+function upd(s,l,v){const d=.995;s.n=s.n*d+1;s.Sl=s.Sl*d+l;s.Sv=s.Sv*d+v;s.Sll=s.Sll*d+l*l;s.Slv=s.Slv*d+l*v;const den=s.n*s.Sll-s.Sl*s.Sl;if(den>1e-6){s.c=(s.n*s.Slv-s.Sl*s.Sv)/den;s.a=(s.Sv-s.c*s.Sl)/s.n}}
+function step(s,load){const v=gen(s,load),e=s.a+s.c*load;s.v.push(v);s.e.push(e);if(s.v.length>W){s.v.shift();s.e.shift()}
+let det=null,z=0;
+if(v===null){s.nr++;if(s.nr>=3)det='dropout'}else{s.nr=0;z=(v-e)/s.sig;if(!s.act&&Math.abs(z)<3)upd(s,load,v);const zc=Math.max(-3,Math.min(3,z));
+ if(Math.abs(z)>4*s.m)s.hi++;else{if(s.hi>0&&s.hi<=4)s.cp=s.cn=0;s.hi=0}s.cp=Math.min(12,Math.max(0,s.cp+zc-.5));s.cn=Math.min(12,Math.max(0,s.cn-zc-.5));
+ const w=s.v.slice(-10),lw=LH.slice(-10);
+ if(w.length==10&&w.every(x=>x===w[0])&&Math.max(...lw)-Math.min(...lw)>.02)det='stuck';
+ else if(s.hi>4||(Math.max(s.cp,s.cn)>8*s.m&&!(s.v.length>4&&s.v.slice(-5).every(x=>x===s.v[s.v.length-1]))))det='drift';else if(s.hi>=1)det='spike';
+ if(v!==null&&Math.abs(v-s.nm)>3*s.ns){naive++;if(s.inj)s.inj.r.nv=1}}
+if(det){raw++;let a=s.act;if(!a)a=s.act={type:det,start:t,zm:0,zp:0,tier:0,q:0,pk:0,r:null};else if(a.type=='spike')a.type=det;
+ if(!a.r){const r=injs.find(x=>x.i==s.i&&!x.det&&t>=x.start&&t<=x.start+x.dur+20);if(r){a.r=r;r.det=det;r.lat=t-r.start}}a.q=0;a.zm=Math.max(a.zm,Math.abs(z));
+ const sv=sevOf(s,a,z);a.pk=Math.max(a.pk,sv);const tier=sv<30?0:sv<65?1:2;
+ if(a.r){a.r.det=a.type;a.r.peak=a.pk;a.r.tier=Math.max(a.r.tier,a.tier)}
+ if(t-a.start+1>=2&&tier>a.tier){a.tier=tier;if(a.r)a.r.tier=Math.max(a.r.tier,tier);emit(s,a,tier,z,sv)}}
+else if(s.act&&++s.act.q>=5){const a=s.act;if(!a.tier){ign++}else if(!a.r)fpA++;s.cp=s.cn=0;s.act=null}
+if(v!==null){s.z5.push(z);if(s.z5.length>5)s.z5.shift();s.zl=z}}
+function emit(s,a,tier,z,sv){const f=isF(a),oth=S.filter(x=>x!=s&&x.act).sort((p,q)=>p.act.start-q.act.start);let h;
+if(f)h=oth.length?`Sensor-level fault, but ${oth[0].n} also abnormal — check shared power/comms`:(a.type=='stuck'?'Flatline while load is changing; peers normal → maintenance ticket, check sensor/wiring':'Signal lost; peers normal → check wiring/comms');
+else if(oth.length){const o=oth[0],dt=a.start-o.act.start;h=`Correlated with ${o.n}`+(dt>0?` (began ${dt}s earlier → likely upstream)`:dt<0?` (lags by ${-dt}s)`:' (simultaneous)')}else h='Isolated process deviation, no correlated peers';
+let ttl='';if(a.type=='drift'){const w=s.v.slice(-20).filter(x=>x!==null),sl=(w[w.length-1]-w[0])/w.length;if(sl>0&&w[w.length-1]<s.lim){const r=(s.lim-w[w.length-1])/sl;ttl=` · ⏱ hits safe limit in ~${r<90?Math.round(r)+'s':Math.round(r/60)+'m'}`}}
+let cf=90;if(!f){const sc=iso(s,[z,z-s.zl,avg(s.z5)]);cf=Math.round(100*(.6+.4*Math.min(1,Math.max(0,(sc-.4)/.3))))}
+const g=t-lastInc<=25&&inc>0&&tier<2;lastInc=t;if(g)grouped++;else{pings++;inc++}
+const al={id:alerts.length+1,t,s:s.n,type:a.type,sev:Math.round(sv),tier,cf,h:h+ttl,route:f?'🛠 Maintenance ticket':tier==2?'📟 Operator page':'📋 Dashboard digest',g,inc,si:s.i};alerts.push(al);addRow(al)}
+function addRow(a){const c=a.tier==2?'var(--r)':'var(--a)',d=document.createElement('div');d.className='row '+(a.tier==2?'u':'m');d.id='al'+a.id;
+d.innerHTML=`<div><b>${TN[a.tier].toUpperCase()}</b> <span class="tag">${a.type}</span><b>${a.s}</b> <span class="sm">t=${a.t}s · conf ${a.cf}%</span>${a.g?' <span class="tag">grouped in incident #'+a.inc+'</span>':' <span class="tag">incident #'+a.inc+'</span>'}</div>
+<div class="bar"><i style="width:${a.sev}%;background:${c}"></i></div><div>Severity <b>${a.sev}</b> → ${a.route}</div><div class="sm">💡 ${a.h}</div>
+<div style="margin-top:4px"><button onclick="fb(${a.id},1)">👍 Useful</button> <button onclick="fb(${a.id},0)">👎 False alarm</button> <span class="sm" id="fb${a.id}"></span></div>`;
+const f=$('fd');if(f.firstChild&&!f.firstChild.className)f.innerHTML='';f.prepend(d)}
+function fb(id,ok){const a=alerts[id-1],s=S[a.si];s.m=ok?Math.max(.7,s.m*.9):Math.min(2,s.m*1.25);$('fb'+id).textContent=`${s.n} sensitivity ${ok?'↑':'↓'} (threshold ×${s.m.toFixed(2)})`}
+const SC={130:[4,'stuck'],200:[0,'spike',12,2],260:[2,'drift'],345:[4,'dropout'],430:[3,'drift'],437:[0,'drift'],445:[1,'drift'],560:[5,'spike',6,2]};
+function tick(){t++;const load=.5+.3*Math.sin(t/80)+.1*Math.sin(t/17)+rn()*.01;LH.push(load);if(LH.length>30)LH.shift();
+if(t<=WU){S.forEach(s=>{s.wl.push(load);s.wv.push(s.b+s.k*load+rn()*s.nz)});if(t==WU)S.forEach(fit);return}
+if(auto&&SC[t]){const c=SC[t];inject(c[0],c[1],c[2],c[3])}
+if(Math.random()<.006)inject(Math.floor(Math.random()*S.length),'blip');S.forEach(s=>step(s,load))}
+function draw(){S.forEach(s=>{const c=$('cv'+s.i),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);const st=getComputedStyle(document.documentElement);
+if(!s.f)return;const vs=s.v.filter(v=>v!==null),lo=Math.min(...vs,...s.e.map(e=>e-4*s.sig)),hi=Math.max(...vs,...s.e.map(e=>e+4*s.sig)),Y=v=>h-4-(v-lo)/(hi-lo||1)*(h-8),X=i=>i/(W-1)*w;
+x.fillStyle=st.getPropertyValue('--band');x.beginPath();s.e.forEach((e,i)=>x[i?'lineTo':'moveTo'](X(i),Y(e+3*s.sig)));for(let i=s.e.length-1;i>=0;i--)x.lineTo(X(i),Y(s.e[i]-3*s.sig));x.fill();
+const a=s.act,col=!a?'#17915a':a.tier==2?'#d3352e':a.tier==1?'#c98200':'#8b95a5';x.strokeStyle=col;x.lineWidth=1.6;x.beginPath();let pen=false;
+s.v.forEach((v,i)=>{if(v===null){pen=false;return}x[pen?'lineTo':'moveTo'](X(i),Y(v));pen=true});x.stroke();
+if(s.v.includes(null)){x.fillStyle='#d3352e';s.v.forEach((v,i)=>{if(v===null)x.fillRect(X(i),h-3,2,3)})}
+const ch=$('ch'+s.i);ch.textContent=a?(a.tier?TN[a.tier]+' · ':'watch · ')+a.type:'OK';ch.style.background=col;const l=s.v[s.v.length-1];$('vl'+s.i).textContent=(l===null?'NO DATA':l.toFixed(2)+' '+s.u)+' · expected '+s.e[s.e.length-1].toFixed(2)})
+const u=alerts.filter(a=>a.tier==2).length,m=alerts.filter(a=>a.tier==1).length,red=raw?Math.round(100*(1-pings/raw)):0;
+$('kp').innerHTML=[['Raw detections',raw],['Naive fixed-threshold alerts',naive],['Operator pings',pings],['Alert reduction',red+'%'],['Urgent / Monitor',u+' / '+m],['Ignored / grouped',ign+' / '+grouped]].map(k=>`<div class="card k"><small>${k[0]}</small><b>${k[1]}</b></div>`).join('');
+$('tk').textContent=t<=WU?`calibrating ${t}/${WU}`:`t=${t}s`+(auto?' · demo running':'')}
+function loop(){if(run){const n=+$('sp').value;for(let i=0;i<n;i++)tick()}draw()}
+function pp(){run=!run;$('pb').textContent=run?'⏸ Pause':'▶ Resume'}
+function ij(type){inject(+$('cs').value,type)}
+function demo(){init();auto=true}
+function rep(){const R=injs.filter(x=>x.type!='blip'),B=injs.filter(x=>x.type=='blip'),hit=R.filter(x=>x.det),ok=hit.filter(x=>x.det==x.type),ty=['spike','drift','dropout','stuck'],lat=hit.map(x=>x.lat);
+const bl=B.filter(x=>x.tier>0).length,red=raw?(100*(1-pings/raw)).toFixed(1):0;
+const cols=[...ty,'MISSED'],cm=ty.map(k=>cols.map(c=>R.filter(x=>x.type==k&&(x.det||'MISSED')==c).length));
+const cmh=`<h2 style="margin-top:12px">Confusion matrix (rows = injected, columns = detected)</h2><div class="ov"><table><tr><th></th>${cols.map(c=>'<th>'+c+'</th>').join('')}</tr>${ty.map((k,i)=>'<tr><td><b>'+k+'</b></td>'+cm[i].map((n,j)=>'<td'+(i==j&&n?' style="font-weight:700;color:var(--g)"':'')+'>'+n+'</td>').join('')+'</tr>').join('')}</table></div>`;
+const nvd=R.filter(x=>x.nv).length,cmp=`<h2 style="margin-top:12px">Versus a fixed threshold (±3σ of raw value)</h2><div class="ov"><table><tr><th></th><th>Faults detected</th><th>Alerts fired</th><th>Knows type?</th><th>Severity + routing?</th></tr><tr><td>Fixed threshold</td><td>${nvd}/${R.length}</td><td>${naive}</td><td>No</td><td>No</td></tr><tr><td>SentinelIQ</td><td>${hit.length}/${R.length}</td><td>${pings} pings (${alerts.length} alerts)</td><td>Yes</td><td>Yes</td></tr></table></div>`;
+const per=ty.map(k=>{const i=R.filter(x=>x.type==k),d=i.filter(x=>x.det==k);return`<tr><td>${k}</td><td>${i.length}</td><td>${d.length}</td><td>${i.length?Math.round(100*d.length/i.length)+'%':'—'}</td><td>${d.length?avg(d.map(x=>x.lat)).toFixed(1)+'s':'—'}</td></tr>`}).join('');
+const rows=R.map(x=>`<tr><td>#${x.id}</td><td>${S[x.i].n}</td><td>${x.type}</td><td>${x.type=='drift'?x.mag+'σ/s':x.type=='spike'?x.mag+'σ':'—'}</td><td>${x.dur}s</td><td>${x.det||'MISSED'}</td><td>${x.lat??'—'}</td><td>${Math.round(x.peak)}</td><td>${TN[x.tier]}</td></tr>`).join('');
+$('rb').innerHTML=`<div class="top"><h1>End-of-run report · t=${t}s</h1><button onclick="$('rep').style.display='none'">Close</button></div>
+<div class="kpis"><div class="card k"><small>Injected faults detected</small><b>${hit.length}/${R.length}</b></div><div class="card k"><small>Type accuracy</small><b>${hit.length?Math.round(100*ok.length/hit.length):0}%</b></div><div class="card k"><small>Mean latency</small><b>${lat.length?avg(lat).toFixed(1):'—'}s</b></div><div class="card k"><small>Alert reduction</small><b>${red}%</b></div></div>
+<p class="sm">${raw} raw detections → ${alerts.length} alerts → ${pings} operator pings (${grouped} grouped into incidents). A naive fixed threshold would have fired ${naive} times. Noise blips injected: ${B.length}, of which ${bl} reached an operator. Unexplained alerts (false positives): ${fpA}. Sub-threshold detections silently logged: ${ign}. Operator feedback shifted sensitivity on: ${S.filter(s=>s.m!=1).map(s=>s.n+' ×'+s.m.toFixed(2)).join(', ')||'none'}.</p>
+${cmp}<h2 style="margin-top:12px">Per-type performance</h2><div class="ov"><table><tr><th>Type</th><th>Injected</th><th>Detected correctly</th><th>Recall</th><th>Avg latency</th></tr>${per}</table></div>${cmh}
+<h2 style="margin-top:12px">Severity calibration (larger/longer faults should score higher)</h2><div class="ov"><table><tr><th>ID</th><th>Sensor</th><th>Injected</th><th>Magnitude</th><th>Duration</th><th>Detected as</th><th>Latency</th><th>Peak severity</th><th>Tier</th></tr>${rows||'<tr><td colspan=9>No injections yet</td></tr>'}</table></div>`;$('rep').style.display='block'}
+init();setInterval(loop,150);
+</script></body></html>
